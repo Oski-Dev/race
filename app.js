@@ -27,9 +27,9 @@ function resizeCanvas(){
   center.y = rect.height/2;
   // shrink scale to ensure track fits entirely in viewport
   if(rect.width > rect.height){
-    scaleX = 1.0; scaleY = 0.75;
+    scaleX = 0.8; scaleY = 0.6;
   } else {
-    scaleX = 0.75; scaleY = 0.95;
+    scaleX = 0.6; scaleY = 0.8;
   }
 }
 
@@ -39,113 +39,77 @@ function seededNoise(x){
 }
 
 function generateTrack(samples=360){
-  // generate a rounded-rectangle centerline so the track looks classic
+  // simplified rounded rectangle track
   trackPoints = [];
   const rect = canvas.getBoundingClientRect();
-  const w = rect.width; const h = rect.height;
-  // available half-sizes taking track width into account
-  const availHalfW = (w/2 - trackWidth/2) / scaleX;
-  const availHalfH = (h/2 - trackWidth/2) / scaleY;
-  const cornerRadius = Math.max(20, Math.min(availHalfW, availHalfH) * 0.18);
+  const w = rect.width * 0.7;
+  const h = rect.height * 0.7;
+  const halfW = w / 2;
+  const halfH = h / 2;
+  const cornerRadius = Math.min(halfW, halfH) * 0.25;
 
-  // lengths of straight segments and corner arcs
-  const topStraight = (availHalfW - cornerRadius);
-  const rightStraight = (availHalfH - cornerRadius) * 2;
-  const bottomStraight = (availHalfW - cornerRadius) * 2;
-  const leftStraight = (availHalfH - cornerRadius) * 2;
-  const arcLen = 0.5 * Math.PI * cornerRadius;
-  perimeter = topStraight + arcLen + rightStraight + arcLen + bottomStraight + arcLen + leftStraight + arcLen + topStraight;
-
-  function pointAtDistance(d){
-    // start at top middle and go clockwise
-    d = (d + 0) % perimeter;
-    // segment A: top middle -> top-right straight (distance up to topStraight)
-    if(d <= topStraight){
-      const x = center.x + (cornerRadius + d) * scaleX;
-      const y = center.y - availHalfH * scaleY;
-      return {x,y,angle:0}; // angle roughly 0 (right)
-    }
-    d -= topStraight;
-    // top-right corner arc (clockwise, quarter circle)
-    if(d <= arcLen){
-      const t = d / arcLen; // 0..1
-      const theta = -Math.PI/2 + t * (Math.PI/2); // from right-facing to down-facing
-      const cx = center.x + (availHalfW - cornerRadius) * scaleX;
-      const cy = center.y - (availHalfH - cornerRadius) * scaleY;
-      const x = cx + Math.cos(theta) * cornerRadius * scaleX;
-      const y = cy + Math.sin(theta) * cornerRadius * scaleY;
-      return {x,y,angle:theta + Math.PI/2};
-    }
-    d -= arcLen;
-    // right straight (downwards)
-    if(d <= rightStraight){
-      const t = d;
-      const x = center.x + (availHalfW) * scaleX;
-      const y = center.y - (availHalfH - cornerRadius) * scaleY + t * scaleY;
-      return {x,y,angle:Math.PI/2};
-    }
-    d -= rightStraight;
-    // bottom-right corner arc
-    if(d <= arcLen){
-      const t = d / arcLen;
-      const theta = 0 + t * (Math.PI/2); // from down-facing to left-facing
-      const cx = center.x + (availHalfW - cornerRadius) * scaleX;
-      const cy = center.y + (availHalfH - cornerRadius) * scaleY;
-      const x = cx + Math.cos(theta) * cornerRadius * scaleX;
-      const y = cy + Math.sin(theta) * cornerRadius * scaleY;
-      return {x,y,angle:theta + Math.PI/2};
-    }
-    d -= arcLen;
-    // bottom straight (leftwards)
-    if(d <= bottomStraight){
-      const t = d;
-      const x = center.x + (availHalfW - cornerRadius) * scaleX - t * scaleX;
-      const y = center.y + availHalfH * scaleY;
-      return {x,y,angle:Math.PI};
-    }
-    d -= bottomStraight;
-    // bottom-left corner arc
-    if(d <= arcLen){
-      const t = d / arcLen;
-      const theta = Math.PI/2 + t * (Math.PI/2); // left-facing to up-facing
-      const cx = center.x - (availHalfW - cornerRadius) * scaleX;
-      const cy = center.y + (availHalfH - cornerRadius) * scaleY;
-      const x = cx + Math.cos(theta) * cornerRadius * scaleX;
-      const y = cy + Math.sin(theta) * cornerRadius * scaleY;
-      return {x,y,angle:theta + Math.PI/2};
-    }
-    d -= arcLen;
-    // left straight (upwards)
-    if(d <= leftStraight){
-      const t = d;
-      const x = center.x - availHalfW * scaleX;
-      const y = center.y + (availHalfH - cornerRadius) * scaleY - t * scaleY;
-      return {x,y,angle:-Math.PI/2};
-    }
-    d -= leftStraight;
-    // top-left corner arc (ends back at top middle)
-    if(d <= arcLen + 1){
-      const t = d / arcLen;
-      const theta = Math.PI + t * (Math.PI/2); // up-facing to right-facing
-      const cx = center.x - (availHalfW - cornerRadius) * scaleX;
-      const cy = center.y - (availHalfH - cornerRadius) * scaleY;
-      const x = cx + Math.cos(theta) * cornerRadius * scaleX;
-      const y = cy + Math.sin(theta) * cornerRadius * scaleY;
-      return {x,y,angle:theta + Math.PI/2};
-    }
-    return {x:center.x,y:center.y,angle:0};
+  // build track points going clockwise
+  // top straight
+  for(let i=0; i<=50; i++){
+    const x = center.x - halfW + cornerRadius + (i/50) * (halfW * 2 - cornerRadius * 2);
+    const y = center.y - halfH;
+    trackPoints.push({x, y, a: 0});
   }
-
-  // sample along perimeter
-  for(let i=0;i<samples;i++){
-    const d = (i/samples) * perimeter;
-    const pt = pointAtDistance(d);
-    trackPoints.push({x:pt.x,y:pt.y,a:pt.angle});
+  // top-right corner
+  for(let i=0; i<=40; i++){
+    const t = i/40;
+    const a = -Math.PI/2 + t * Math.PI/2;
+    const x = center.x + halfW - cornerRadius + Math.cos(a) * cornerRadius;
+    const y = center.y - halfH + cornerRadius + Math.sin(a) * cornerRadius;
+    trackPoints.push({x, y, a: a + Math.PI/2});
   }
-  // set startAngle to the tangent at first point
+  // right straight
+  for(let i=0; i<=50; i++){
+    const x = center.x + halfW;
+    const y = center.y - halfH + cornerRadius + (i/50) * (halfH * 2 - cornerRadius * 2);
+    trackPoints.push({x, y, a: Math.PI/2});
+  }
+  // bottom-right corner
+  for(let i=0; i<=40; i++){
+    const t = i/40;
+    const a = 0 + t * Math.PI/2;
+    const x = center.x + halfW - cornerRadius + Math.cos(a) * cornerRadius;
+    const y = center.y + halfH - cornerRadius + Math.sin(a) * cornerRadius;
+    trackPoints.push({x, y, a: a + Math.PI/2});
+  }
+  // bottom straight
+  for(let i=0; i<=50; i++){
+    const x = center.x + halfW - cornerRadius - (i/50) * (halfW * 2 - cornerRadius * 2);
+    const y = center.y + halfH;
+    trackPoints.push({x, y, a: Math.PI});
+  }
+  // bottom-left corner
+  for(let i=0; i<=40; i++){
+    const t = i/40;
+    const a = Math.PI/2 + t * Math.PI/2;
+    const x = center.x - halfW + cornerRadius + Math.cos(a) * cornerRadius;
+    const y = center.y + halfH - cornerRadius + Math.sin(a) * cornerRadius;
+    trackPoints.push({x, y, a: a + Math.PI/2});
+  }
+  // left straight
+  for(let i=0; i<=50; i++){
+    const x = center.x - halfW;
+    const y = center.y + halfH - cornerRadius - (i/50) * (halfH * 2 - cornerRadius * 2);
+    trackPoints.push({x, y, a: -Math.PI/2});
+  }
+  // top-left corner
+  for(let i=0; i<=40; i++){
+    const t = i/40;
+    const a = Math.PI + t * Math.PI/2;
+    const x = center.x - halfW + cornerRadius + Math.cos(a) * cornerRadius;
+    const y = center.y - halfH + cornerRadius + Math.sin(a) * cornerRadius;
+    trackPoints.push({x, y, a: a + Math.PI/2});
+  }
+  
+  perimeter = trackPoints.length;
   if(trackPoints.length>0) startAngle = trackPoints[0].a;
   
-  // place gates evenly around track (4 gates, one per quadrant)
+  // place gates evenly around track (4 gates)
   gates = [];
   const gateCount = 4;
   for(let i=0;i<gateCount;i++){
@@ -262,6 +226,13 @@ function isOnTrack(x, y){
   }
   // on track if within trackWidth/2
   return minDist <= trackWidth/2 + 5; // small margin
+}
+
+function lineSegmentCross(x1,y1, x2,y2, x3,y3, x4,y4){
+  // check if line segment (x1,y1)-(x2,y2) crosses line segment (x3,y3)-(x4,y4)
+  const ccw = (ax,ay, bx,by, cx,cy) => (cy-ay)*(bx-ax) > (by-ay)*(cx-ax);
+  return ccw(x1,y1,x3,y3,x4,y4) !== ccw(x2,y2,x3,y3,x4,y4) && 
+         ccw(x1,y1,x2,y2,x3,y3) !== ccw(x1,y1,x2,y2,x4,y4);
 }
 // Vehicle class representing a simple car (arrow)
 class Vehicle{
@@ -435,18 +406,31 @@ function loop(ts){
 }
 
 function checkGatePassing(vehicle, playerIdx){
-  // find closest gate
-  const gateIdx = findClosestGateIdx(vehicle.x, vehicle.y);
-  if(gateIdx === -1) return;
-  const gate = gates[gateIdx];
+  if(!vehicle.prevX) { vehicle.prevX = vehicle.x; vehicle.prevY = vehicle.y; }
   
-  // rough check: if vehicle is near gate and hasn't passed it yet, mark as passed
-  const gp = trackPoints[gate.idx];
-  const dist = Math.hypot(vehicle.x - gp.x, vehicle.y - gp.y);
-  if(dist < trackWidth && !gate.passed){
-    gate.passed = true;
-    vehicle.gatesPassed++;
+  // check each gate for line crossing
+  for(let g=0; g<gates.length; g++){
+    const gate = gates[g];
+    const gp = trackPoints[gate.idx];
+    const next = trackPoints[(gate.idx+1) % trackPoints.length];
+    const tx = next.x - gp.x, ty = next.y - gp.y;
+    const len = Math.hypot(tx,ty) || 1;
+    const nx = -ty/len, ny = tx/len;
+    
+    // gate posts
+    const half = trackWidth*0.45;
+    const g1x = gp.x + nx * half, g1y = gp.y + ny * half;
+    const g2x = gp.x - nx * half, g2y = gp.y - ny * half;
+    
+    // check if vehicle crossed from prev to current position
+    if(!gate.passed && lineSegmentCross(vehicle.prevX, vehicle.prevY, vehicle.x, vehicle.y, g1x, g1y, g2x, g2y)){
+      gate.passed = true;
+      vehicle.gatesPassed++;
+    }
   }
+  
+  vehicle.prevX = vehicle.x;
+  vehicle.prevY = vehicle.y;
   
   // check for lap completion: all gates passed + crossing start line again
   if(vehicle.gatesPassed >= gates.length){
@@ -465,15 +449,4 @@ function checkGatePassing(vehicle, playerIdx){
     }
   }
 }
-
-function findClosestGateIdx(x, y){
-  let best = -1, bestDist = 1e9;
-  for(let i=0; i<gates.length; i++){
-    const gp = trackPoints[gates[i].idx];
-    const dist = Math.hypot(x - gp.x, y - gp.y);
-    if(dist < bestDist){ bestDist = dist; best = i; }
-  }
-  return best;
-}
-
 init();
