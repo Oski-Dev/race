@@ -10,6 +10,8 @@ let center = {x:0,y:0};
 let trackWidth = 240; // px — szerszy tor
 let startAngle = -Math.PI/2; // will be set from track
 let scaleX = 1, scaleY = 1;
+let perimeter = 0; // total track length
+let gates = []; // gate positions (indices along trackPoints)
 
 let vehicles = [];
 let lastTime = 0;
@@ -23,11 +25,11 @@ function resizeCanvas(){
   ctx.setTransform(DPR,0,0,DPR,0,0);
   center.x = rect.width/2;
   center.y = rect.height/2;
-  // determine scale so track stretches with window orientation
+  // shrink scale to ensure track fits entirely in viewport
   if(rect.width > rect.height){
-    scaleX = 1.15; scaleY = 0.9;
+    scaleX = 1.0; scaleY = 0.75;
   } else {
-    scaleX = 0.9; scaleY = 1.05;
+    scaleX = 0.75; scaleY = 0.95;
   }
 }
 
@@ -52,7 +54,7 @@ function generateTrack(samples=360){
   const bottomStraight = (availHalfW - cornerRadius) * 2;
   const leftStraight = (availHalfH - cornerRadius) * 2;
   const arcLen = 0.5 * Math.PI * cornerRadius;
-  const perimeter = topStraight + arcLen + rightStraight + arcLen + bottomStraight + arcLen + leftStraight + arcLen + topStraight;
+  perimeter = topStraight + arcLen + rightStraight + arcLen + bottomStraight + arcLen + leftStraight + arcLen + topStraight;
 
   function pointAtDistance(d){
     // start at top middle and go clockwise
@@ -142,6 +144,14 @@ function generateTrack(samples=360){
   }
   // set startAngle to the tangent at first point
   if(trackPoints.length>0) startAngle = trackPoints[0].a;
+  
+  // place gates evenly around track (4 gates, one per quadrant)
+  gates = [];
+  const gateCount = 4;
+  for(let i=0;i<gateCount;i++){
+    const gateIdx = Math.round((i / gateCount) * trackPoints.length) % trackPoints.length;
+    gates.push({idx: gateIdx, passed: false});
+  }
 }
 
 function drawTrack(){
@@ -176,6 +186,7 @@ function drawTrack(){
   ctx.fill();
 
   drawStartLine();
+  drawGates();
   drawVehicles();
 }
 
@@ -212,6 +223,25 @@ function normalizeAngle(a){
   return a;
 }
 
+function drawGates(){
+  // draw gate markers at each gate position
+  for(const gate of gates){
+    const p = trackPoints[gate.idx];
+    const next = trackPoints[(gate.idx+1) % trackPoints.length];
+    const tx = next.x - p.x, ty = next.y - p.y;
+    const len = Math.hypot(tx,ty) || 1;
+    const nx = -ty/len, ny = tx/len;
+    // draw a vertical line across track
+    const half = trackWidth*0.45;
+    ctx.beginPath();
+    ctx.moveTo(p.x + nx * half, p.y + ny * half);
+    ctx.lineTo(p.x - nx * half, p.y - ny * half);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = gate.passed ? '#22c55e' : '#f97316'; // green if passed, orange if not
+    ctx.stroke();
+  }
+}
+
 function pointAtAngle(angle){
   // find closest point
   let best = 0; let bestDiff = 1e9;
@@ -220,6 +250,18 @@ function pointAtAngle(angle){
     if(d < bestDiff){ bestDiff = d; best = i; }
   }
   return trackPoints[best];
+}
+
+function isOnTrack(x, y){
+  // find distance to centerline
+  let minDist = 1e9;
+  for(const pt of trackPoints){
+    const dx = pt.x - x, dy = pt.y - y;
+    const dist = Math.hypot(dx, dy);
+    minDist = Math.min(minDist, dist);
+  }
+  // on track if within trackWidth/2
+  return minDist <= trackWidth/2 + 5; // small margin
 }
 // Vehicle class representing a simple car (arrow)
 class Vehicle{
@@ -230,6 +272,9 @@ class Vehicle{
     this.accel = 600; // px/s^2
     this.decel = 260; // px/s^2
     this.turnRate = 3.5; // rad/s
+    this.onTrack = true;
+    this.gatesPassed = 0; // number of gates passed
+    this.lastCrossedStartLine = false; // did we cross start in last frame?
   }
   resetTo(point, offset, angle){
     const nx = Math.cos(angle + Math.PI/2);
@@ -238,12 +283,18 @@ class Vehicle{
     this.y = point.y + ny * offset;
     this.angle = angle;
     this.speed = 0;
+    this.gatesPassed = 0;
+    this.lastCrossedStartLine = false;
   }
   update(dt, input){
-    // acceleration
+    // check if on track
+    this.onTrack = isOnTrack(this.x, this.y);
+    
+    // acceleration with speed penalty if off-track
+    const currentMaxSpeed = this.onTrack ? this.maxSpeed : this.maxSpeed * 0.5;
     if(input && input.up){
       this.speed += this.accel * dt;
-      if(this.speed > this.maxSpeed) this.speed = this.maxSpeed;
+      if(this.speed > currentMaxSpeed) this.speed = currentMaxSpeed;
     } else {
       // gradual slowdown
       this.speed -= this.decel * dt;
@@ -350,8 +401,12 @@ function startRace(){
   for(let i=0;i<2;i++){
     const vv = new Vehicle(p.x + nx * offsets[i], p.y + ny * offsets[i], angle, colors[i]);
     vv.speed = 0;
+    vv.gatesPassed = 0;
+    vv.lastCrossedStartLine = false;
     vehicles.push(vv);
   }
+  // reset gates
+  for(const gate of gates) gate.passed = false;
   // reset scoreboard
   document.getElementById('p1score').textContent = '0';
   document.getElementById('p2score').textContent = '0';
@@ -365,12 +420,60 @@ function loop(ts){
   const dt = Math.min(0.05, (ts - lastTime)/1000);
   lastTime = ts;
   // update player 1 with controls
-  if(vehicles[0]) vehicles[0].update(dt, controls);
+  if(vehicles[0]){
+    vehicles[0].update(dt, controls);
+    checkGatePassing(vehicles[0], 0); // player 1
+  }
   // player 2 has no input for now (idle)
-  if(vehicles[1]) vehicles[1].update(dt, null);
+  if(vehicles[1]){
+    vehicles[1].update(dt, null);
+    checkGatePassing(vehicles[1], 1); // player 2
+  }
   // redraw
   drawTrack();
   requestAnimationFrame(loop);
+}
+
+function checkGatePassing(vehicle, playerIdx){
+  // find closest gate
+  const gateIdx = findClosestGateIdx(vehicle.x, vehicle.y);
+  if(gateIdx === -1) return;
+  const gate = gates[gateIdx];
+  
+  // rough check: if vehicle is near gate and hasn't passed it yet, mark as passed
+  const gp = trackPoints[gate.idx];
+  const dist = Math.hypot(vehicle.x - gp.x, vehicle.y - gp.y);
+  if(dist < trackWidth && !gate.passed){
+    gate.passed = true;
+    vehicle.gatesPassed++;
+  }
+  
+  // check for lap completion: all gates passed + crossing start line again
+  if(vehicle.gatesPassed >= gates.length){
+    const startPt = trackPoints[0];
+    const distToStart = Math.hypot(vehicle.x - startPt.x, vehicle.y - startPt.y);
+    if(distToStart < trackWidth*0.8 && !vehicle.lastCrossedStartLine){
+      // completed a lap!
+      vehicle.lastCrossedStartLine = true;
+      const laps = parseInt(document.getElementById(playerIdx === 0 ? 'p1score' : 'p2score').textContent) + 1;
+      document.getElementById(playerIdx === 0 ? 'p1score' : 'p2score').textContent = String(laps);
+      // reset gates
+      for(const g of gates) g.passed = false;
+      vehicle.gatesPassed = 0;
+    } else if(distToStart >= trackWidth && vehicle.lastCrossedStartLine){
+      vehicle.lastCrossedStartLine = false;
+    }
+  }
+}
+
+function findClosestGateIdx(x, y){
+  let best = -1, bestDist = 1e9;
+  for(let i=0; i<gates.length; i++){
+    const gp = trackPoints[gates[i].idx];
+    const dist = Math.hypot(x - gp.x, y - gp.y);
+    if(dist < bestDist){ bestDist = dist; best = i; }
+  }
+  return best;
 }
 
 init();
