@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Prosty Wyścig - Race</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="controls">
+      <div class="left-controls">
+        <button id="startBtn">Start</button>
+        <label for="players">Liczba graczy:</label>
+        <select id="players">
+          <option value="1">1</option>
+          <option value="2">2</option>
+        </select>
+      </div>
+      <div class="right-controls">
+        <small>Prosty widok toru — top-down</small>
+      </div>
+    </header>
+
+    <main class="game-window">
+      <canvas id="trackCanvas"></canvas>
+    </main>
+
+    <footer class="scoreboard">
+      <table>
+        <thead>
+          <tr><th>Zawodnik</th><th>Kroki / okrążenia</th></tr>
+        </thead>
+        <tbody id="scores">
+          <tr><td>Gracz 1</td><td id="p1score">0</td></tr>
+          <tr id="player2row" style="display:none"><td>Gracz 2</td><td id="p2score">0</td></tr>
+        </tbody>
+      </table>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
